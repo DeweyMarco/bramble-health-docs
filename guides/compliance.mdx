@@ -1,0 +1,179 @@
+---
+title: "Compliance & Security"
+description: "HIPAA, SOC 2, data handling, encryption, and audit logging in the Bramble Health platform."
+icon: "shield-check"
+---
+
+## Certifications
+
+<CardGroup cols={2}>
+  <Card title="HIPAA" icon="shield-halved" color="#1A8C52">
+    Bramble acts as a **Business Associate** under HIPAA. We sign BAAs with
+    all customers who handle PHI. BAAs are available for Starter and above.
+  </Card>
+  <Card title="SOC 2 Type II" icon="certificate" color="#1A8C52">
+    Annual SOC 2 Type II audit by an independent third-party firm covering
+    Security, Availability, and Confidentiality trust service criteria.
+  </Card>
+  <Card title="ONC 2015 Edition" icon="check-circle" color="#1A8C52">
+    ONC Health IT Certification for our EHR Module (§170.315(g)(7) and
+    §170.315(g)(9)) enabling data access and patient authorization workflows.
+  </Card>
+  <Card title="HITRUST CSF" icon="lock" color="#6B7280">
+    **In progress** — Expected certification Q3 2025. Contact
+    [compliance@bramblehealth.com](mailto:compliance@bramblehealth.com) for
+    the current assessment status.
+  </Card>
+</CardGroup>
+
+## Business Associate Agreements
+
+A **Business Associate Agreement (BAA)** is required before transmitting real PHI through the Bramble API.
+
+<Steps>
+  <Step title="Request a BAA">
+    Email [legal@bramblehealth.com](mailto:legal@bramblehealth.com) or open
+    a request in the [Bramble dashboard](https://app.bramblehealth.com/settings/compliance).
+  </Step>
+  <Step title="Review and sign">
+    Bramble uses DocuSign for electronic signatures. Most BAAs are executed
+    within 1 business day.
+  </Step>
+  <Step title="Enable PHI access">
+    Once the BAA is on file, your account is automatically enabled for
+    production PHI access. Sandbox access remains available during review.
+  </Step>
+</Steps>
+
+<Warning>
+  **Never** send real patient data to the sandbox environment
+  (`sandbox.bramblehealth.com`). The sandbox is not covered by your BAA and
+  is not HIPAA-compliant infrastructure.
+</Warning>
+
+## Data encryption
+
+| Layer | Standard |
+|-------|----------|
+| Data in transit | TLS 1.2+ (TLS 1.3 preferred) |
+| Data at rest | AES-256 (AWS KMS-managed keys) |
+| Database backups | AES-256, encrypted before transmission to S3 |
+| EHR connection credentials | AES-256, stored in AWS Secrets Manager |
+
+Bramble does **not** support plaintext HTTP connections. All HTTP requests are automatically redirected to HTTPS.
+
+## Audit logging
+
+Every action that touches PHI is written to an immutable audit log.
+
+### What's logged
+
+- All API requests (method, endpoint, response code, timestamp)
+- Authentication events (token issuance, refresh, revocation)
+- Data access (which patient records were read)
+- Data mutations (creates, updates, deletes with before/after diffs)
+- EHR sync events
+- Webhook deliveries
+- User and API key management
+
+### Accessing audit logs
+
+**Dashboard:** Settings → Audit Log — searchable, filterable, exportable to CSV.
+
+**API:** `GET /audit-logs` (requires `admin` scope):
+
+```bash
+curl "https://api.bramblehealth.com/v1/audit-logs?start=2024-09-01&end=2024-09-30" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Example log entry:**
+
+```json
+{
+  "id": "log-7a92b1",
+  "timestamp": "2024-09-10T14:22:03Z",
+  "actor": {
+    "type": "api_key",
+    "id": "key-001",
+    "label": "Care Coordinator App"
+  },
+  "action": "patient.read",
+  "resource": {
+    "type": "Patient",
+    "id": "pt-00456"
+  },
+  "ip": "192.0.2.1",
+  "outcome": "success"
+}
+```
+
+Audit logs are retained for **7 years** per HIPAA requirements and are included in your SOC 2 audit scope.
+
+## Access controls
+
+### API key scopes
+
+Limit each API key to only the scopes it needs. See the [Authentication guide](/guides/authentication#scopes) for the full scope list.
+
+### IP allowlisting
+
+Restrict API key usage to specific IP ranges in the dashboard:
+**Settings → API Keys → Edit → IP Allowlist**.
+
+```
+# Example allowlist
+10.0.0.0/8       # Internal network
+203.0.113.42/32  # CI/CD server
+```
+
+### Minimum necessary access
+
+Under HIPAA's Minimum Necessary Standard, request only the patient data your application needs. Use FHIR search parameters to retrieve targeted records rather than broad searches.
+
+```bash
+# Good: targeted search
+GET /observations?patient=pt-00456&code=4548-4
+
+# Avoid: unbounded search
+GET /observations?patient=pt-00456
+```
+
+## Data residency
+
+All Bramble production data is stored in **US-East-1 (Northern Virginia)** and replicated to **US-West-2 (Oregon)** for disaster recovery.
+
+Data never leaves US borders. Bramble does not offer EU or other regional deployments at this time.
+
+## Incident response
+
+In the event of a security incident:
+
+- Bramble will notify affected customers within **60 days** per HIPAA breach notification rules
+- For incidents affecting PHI, Bramble will provide a detailed incident report
+- Subscribe to [status.bramblehealth.com](https://status.bramblehealth.com) for real-time incident alerts
+
+To report a suspected security issue: [security@bramblehealth.com](mailto:security@bramblehealth.com)
+
+## HIPAA compliance checklist for integrations
+
+<AccordionGroup>
+  <Accordion title="Before going to production" icon="clipboard-check">
+    - [ ] BAA signed with Bramble
+    - [ ] Using production environment (not sandbox) for real PHI
+    - [ ] API keys scoped to minimum necessary access
+    - [ ] Secrets stored in a secrets manager (not source code)
+    - [ ] TLS validated in all client configurations
+    - [ ] Audit logging enabled and retained per your policy
+    - [ ] Workforce training on PHI handling completed
+  </Accordion>
+
+  <Accordion title="Ongoing responsibilities" icon="rotate">
+    - [ ] Rotate API keys every 90 days
+    - [ ] Review audit logs monthly for unexpected access
+    - [ ] Keep IP allowlists updated when infrastructure changes
+    - [ ] Test backup/recovery procedures quarterly
+    - [ ] Complete annual HIPAA security risk assessment
+    - [ ] Update BAA if your business relationship with Bramble changes
+  </Accordion>
+</AccordionGroup>

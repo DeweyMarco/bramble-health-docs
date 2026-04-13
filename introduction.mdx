@@ -1,0 +1,124 @@
+---
+title: "Introduction"
+description: "How Bramble Health works — architecture, data model, and key concepts."
+icon: "seedling"
+---
+
+## What is Bramble Health?
+
+Bramble Health is a **care coordination API platform** headquartered in Denver, CO. We provide health systems, digital health companies, and care management organizations with a unified API layer over fragmented EHR infrastructure.
+
+Our platform abstracts the complexity of FHIR endpoints, SMART on FHIR auth flows, and vendor-specific quirks so your engineering team can focus on building clinical workflows — not fighting with HL7 integrations.
+
+## Architecture overview
+
+```
+Your Application
+      │
+      ▼
+┌─────────────────────────────────────┐
+│        Bramble Health API           │
+│   api.bramblehealth.com/v1          │
+│                                     │
+│  ┌──────────┐  ┌──────────────────┐ │
+│  │ REST API │  │  Webhook Engine  │ │
+│  └──────────┘  └──────────────────┘ │
+│  ┌──────────────────────────────┐   │
+│  │      FHIR Normalization      │   │
+│  └──────────────────────────────┘   │
+│  ┌────────┐ ┌────────┐ ┌────────┐  │
+│  │ Epic   │ │Cerner  │ │Athena  │  │
+│  │Adapter │ │Adapter │ │Adapter │  │
+│  └────────┘ └────────┘ └────────┘  │
+└─────────────────────────────────────┘
+      │           │           │
+      ▼           ▼           ▼
+   Epic EHR   Cerner EHR  Athenahealth
+```
+
+## Core concepts
+
+<AccordionGroup>
+  <Accordion title="FHIR R4 data model" icon="layer-group" defaultOpen>
+    Every resource in the Bramble API maps to an HL7 FHIR R4 resource type.
+    Patients, Practitioners, Appointments, Observations, CarePlans, and
+    MedicationRequests all follow FHIR structure conventions.
+
+    If you're familiar with FHIR you'll feel at home. If you're new to FHIR,
+    our guides walk through the most important patterns.
+  </Accordion>
+
+  <Accordion title="Organizations & tenants" icon="building">
+    Each API key belongs to an **Organization** — the top-level tenant in
+    Bramble. Organizations can have multiple **EHR Connections**, each pointing
+    to a different health system or facility.
+
+    Data is strictly isolated between organizations. A patient record synced
+    from one health system is never visible to another organization's API key.
+  </Accordion>
+
+  <Accordion title="EHR Connections" icon="plug">
+    An **EHR Connection** represents a configured integration with an external
+    EHR system. Once active, Bramble continuously syncs clinical data from the
+    EHR into your organization's data partition.
+
+    You can have connections to multiple EHR systems simultaneously and query
+    across them through a single unified API.
+  </Accordion>
+
+  <Accordion title="Events & webhooks" icon="bolt">
+    Bramble emits events for every meaningful state change — patient updates,
+    appointment bookings, observation recordings, EHR sync completions, and
+    more.
+
+    Subscribe to event types via the Webhooks API. Payloads are signed with
+    HMAC-SHA256 so you can verify authenticity before processing.
+  </Accordion>
+</AccordionGroup>
+
+## Environments
+
+<CardGroup cols={2}>
+  <Card title="Production" icon="server" href="https://api.bramblehealth.com/v1">
+    `https://api.bramblehealth.com/v1`
+
+    Handles live PHI. Requires a signed BAA and production API credentials.
+    All traffic is audit-logged.
+  </Card>
+  <Card title="Sandbox" icon="flask" href="https://sandbox.bramblehealth.com/v1">
+    `https://sandbox.bramblehealth.com/v1`
+
+    Contains synthetic (non-PHI) patient data for safe development and testing.
+    Sandbox data resets every 24 hours.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Never send real patient data (PHI) to the sandbox environment. The sandbox
+  is not HIPAA-covered and does not have audit logging.
+</Warning>
+
+## API versioning
+
+The current API version is **v1**. Breaking changes will be released as `v2`, `v3`, etc. with at least 6 months deprecation notice. Non-breaking additions (new fields, new endpoints) may be added to the current version at any time.
+
+The API version is included in the base URL path: `https://api.bramblehealth.com/v1`.
+
+## Rate limits
+
+| Plan | Requests/minute | Burst |
+|------|----------------|-------|
+| Starter | 60 | 120 |
+| Growth | 300 | 600 |
+| Enterprise | Custom | Custom |
+
+See the [Rate Limits guide](/guides/rate-limits) for details on headers, backoff strategies, and burst handling.
+
+## Compliance & certifications
+
+- **HIPAA** — BAAs available for all paid plans
+- **SOC 2 Type II** — Annual audit by independent third party
+- **HITRUST CSF** — In progress (expected Q3 2025)
+- **ONC Health IT Certification** — Certified EHR Module (2015 Edition)
+
+See the [Compliance guide](/guides/compliance) for detailed documentation.

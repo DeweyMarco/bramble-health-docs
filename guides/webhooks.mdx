@@ -1,0 +1,237 @@
+---
+title: "Webhooks"
+description: "Receive real-time event notifications for patient updates, appointments, EHR sync completions, and more."
+icon: "bolt"
+---
+
+## Overview
+
+Instead of polling the API for changes, subscribe to **webhooks** to receive HTTP POST notifications the moment something happens in Bramble.
+
+Every webhook delivery includes a signed payload you can verify with HMAC-SHA256, ensuring the request genuinely came from Bramble.
+
+## Creating a subscription
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/webhooks \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-app.example.com/webhooks/bramble",
+    "events": [
+      "patient.updated",
+      "appointment.booked",
+      "appointment.cancelled",
+      "ehr_connection.activated"
+    ],
+    "secret": "your-random-signing-secret",
+    "active": true
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "id": "wh-99f2c3",
+  "url": "https://your-app.example.com/webhooks/bramble",
+  "events": ["patient.updated", "appointment.booked", "appointment.cancelled", "ehr_connection.activated"],
+  "active": true,
+  "createdAt": "2024-09-01T12:00:00Z",
+  "deliverySuccessRate": null
+}
+```
+
+## Available event types
+
+<AccordionGroup>
+  <Accordion title="Patient events" icon="user">
+    | Event | Fired when |
+    |-------|-----------|
+    | `patient.created` | A new patient record is created |
+    | `patient.updated` | Patient demographics are modified |
+    | `patient.deleted` | A patient is soft-deleted |
+  </Accordion>
+
+  <Accordion title="Appointment events" icon="calendar">
+    | Event | Fired when |
+    |-------|-----------|
+    | `appointment.booked` | An appointment is confirmed |
+    | `appointment.cancelled` | An appointment is cancelled |
+    | `appointment.fulfilled` | An appointment is marked complete |
+    | `appointment.noshow` | Patient no-show is recorded |
+  </Accordion>
+
+  <Accordion title="Clinical events" icon="stethoscope">
+    | Event | Fired when |
+    |-------|-----------|
+    | `observation.created` | A new observation is recorded |
+    | `medication_request.created` | A new prescription is ordered |
+    | `medication_request.stopped` | A medication is discontinued |
+    | `care_plan.created` | A new care plan is activated |
+    | `care_plan.updated` | A care plan is modified |
+    | `care_plan.status_changed` | Care plan status transitions |
+  </Accordion>
+
+  <Accordion title="EHR connection events" icon="plug">
+    | Event | Fired when |
+    |-------|-----------|
+    | `ehr_connection.activated` | Connection is validated and syncing |
+    | `ehr_connection.sync_completed` | A sync cycle finishes |
+    | `ehr_connection.error` | A sync or auth failure occurs |
+    | `ehr_connection.deactivated` | A connection is removed |
+  </Accordion>
+</AccordionGroup>
+
+## Payload structure
+
+Every webhook payload follows the same envelope:
+
+```json
+{
+  "id": "evt-4a2b91f3",
+  "event": "appointment.booked",
+  "occurredAt": "2024-09-10T09:05:33Z",
+  "organizationId": "org-bramble-001",
+  "data": {
+    "resourceType": "Appointment",
+    "id": "appt-8821",
+    "status": "booked",
+    "start": "2024-09-10T15:00:00-06:00",
+    "end": "2024-09-10T15:30:00-06:00",
+    "participant": [
+      { "actor": { "reference": "Patient/pt-00456" }, "status": "accepted" }
+    ]
+  }
+}
+```
+
+The `data` field is the full FHIR resource in its current state at the time the event fired.
+
+## Validating signatures
+
+Bramble signs every delivery with HMAC-SHA256 using your `secret`. Always verify the signature before processing the payload.
+
+The signature is sent in the `X-Bramble-Signature-256` header:
+
+```
+X-Bramble-Signature-256: sha256=7d38cdd689735b008b3c702edd92eea23791c5f6
+```
+
+<CodeGroup>
+  ```python Python
+  import hmac
+  import hashlib
+  from flask import request, abort
+
+  BRAMBLE_SECRET = "your-signing-secret"
+
+  def verify_signature(payload_body: bytes, signature_header: str) -> bool:
+      expected = "sha256=" + hmac.new(
+          BRAMBLE_SECRET.encode(),
+          payload_body,
+          hashlib.sha256,
+      ).hexdigest()
+      return hmac.compare_digest(expected, signature_header)
+
+  @app.route("/webhooks/bramble", methods=["POST"])
+  def handle_webhook():
+      signature = request.headers.get("X-Bramble-Signature-256", "")
+      if not verify_signature(request.data, signature):
+          abort(401, "Invalid signature")
+
+      event = request.json
+      # process event...
+      return "", 200
+  ```
+
+  ```javascript Node.js
+  const crypto = require("crypto");
+
+  const BRAMBLE_SECRET = "your-signing-secret";
+
+  function verifySignature(rawBody, signatureHeader) {
+    const expected =
+      "sha256=" +
+      crypto
+        .createHmac("sha256", BRAMBLE_SECRET)
+        .update(rawBody)
+        .digest("hex");
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signatureHeader)
+    );
+  }
+
+  app.post("/webhooks/bramble", express.raw({ type: "*/*" }), (req, res) => {
+    const sig = req.headers["x-bramble-signature-256"] || "";
+    if (!verifySignature(req.body, sig)) {
+      return res.status(401).send("Invalid signature");
+    }
+
+    const event = JSON.parse(req.body);
+    // process event...
+    res.status(200).send();
+  });
+  ```
+</CodeGroup>
+
+<Warning>
+  Always use a timing-safe comparison (`hmac.compare_digest` in Python,
+  `crypto.timingSafeEqual` in Node) to prevent timing attacks.
+</Warning>
+
+## Responding to deliveries
+
+Your endpoint must respond with a `2xx` status code within **10 seconds**. Bramble does not read the response body.
+
+If your endpoint returns a non-2xx status or times out, Bramble will retry with exponential backoff:
+
+| Attempt | Delay |
+|---------|-------|
+| 1 | Immediate |
+| 2 | 5 seconds |
+| 3 | 30 seconds |
+| 4 | 5 minutes |
+| 5 | 30 minutes |
+| 6 | 2 hours |
+
+After 6 failed attempts, the webhook is marked `failed` and deactivated. You'll receive an email notification and can reactivate it from the dashboard.
+
+<Tip>
+  For slow processing tasks, respond `200` immediately and process the event
+  asynchronously via a queue (SQS, RabbitMQ, etc.).
+</Tip>
+
+## Idempotency
+
+Events may occasionally be delivered more than once (at-least-once delivery). Each event has a unique `id` — store processed event IDs and deduplicate on your end.
+
+```python
+# Deduplicate using Redis
+if redis.sismember("processed_events", event["id"]):
+    return "", 200  # Already handled
+
+process_event(event)
+redis.sadd("processed_events", event["id"])
+redis.expire("processed_events", 86400 * 7)  # Retain for 7 days
+```
+
+## Testing webhooks
+
+Send a test event to your endpoint to verify connectivity and signature validation:
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/webhooks/wh-99f2c3/test \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Response:**
+
+```json
+{
+  "delivered": true,
+  "statusCode": 200,
+  "latencyMs": 42
+}
+```

@@ -1,0 +1,189 @@
+---
+title: "Node.js SDK"
+description: "Install and use the Bramble Health TypeScript/Node.js SDK."
+icon: "node-js"
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @bramble-health/sdk
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add @bramble-health/sdk
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @bramble-health/sdk
+    ```
+  </Tab>
+</Tabs>
+
+Requires Node.js 18+. TypeScript 5.0+ recommended.
+
+## Basic usage
+
+```typescript
+import { BrambleClient } from "@bramble-health/sdk";
+
+const client = new BrambleClient({
+  clientId: process.env.BRAMBLE_CLIENT_ID!,
+  clientSecret: process.env.BRAMBLE_CLIENT_SECRET!,
+});
+
+// Search for patients
+const patients = await client.patients.search({
+  family: "Smith",
+  birthdate: "1985-04-23",
+});
+
+patients.entry.forEach(({ resource }) => {
+  console.log(resource.id, resource.name?.[0].family);
+});
+
+// Book an appointment
+const appointment = await client.appointments.create({
+  resourceType: "Appointment",
+  status: "booked",
+  start: "2024-09-10T09:00:00-06:00",
+  end: "2024-09-10T09:30:00-06:00",
+  participant: [
+    { actor: { reference: "Patient/pt-00123" }, status: "accepted" },
+    { actor: { reference: "Practitioner/prac-0012" }, status: "accepted" },
+  ],
+});
+
+console.log("Booked:", appointment.id);
+```
+
+## Sandbox mode
+
+```typescript
+const client = new BrambleClient({
+  clientId: process.env.BRAMBLE_CLIENT_ID!,
+  clientSecret: process.env.BRAMBLE_CLIENT_SECRET!,
+  sandbox: true,
+});
+```
+
+## TypeScript types
+
+All FHIR resources are fully typed. The SDK exports FHIR R4 type definitions:
+
+```typescript
+import type { Patient, Appointment, Observation } from "@bramble-health/sdk/types";
+
+function processPatient(patient: Patient) {
+  const name = patient.name?.[0];
+  return `${name?.given?.join(" ")} ${name?.family}`;
+}
+```
+
+## Pagination
+
+```typescript
+// Auto-paginate with async iteration
+for await (const patient of client.patients.search().autoPagingIter()) {
+  await processPatient(patient);
+}
+
+// Manual pagination
+let page = await client.patients.search({ limit: 50 });
+while (page) {
+  for (const { resource } of page.entry) {
+    await processPatient(resource);
+  }
+  page = await page.nextPage();
+}
+```
+
+## Error handling
+
+```typescript
+import {
+  BrambleAuthError,
+  BrambleNotFoundError,
+  BrambleRateLimitError,
+  BrambleAPIError,
+} from "@bramble-health/sdk";
+
+try {
+  const patient = await client.patients.get("pt-nonexistent");
+} catch (err) {
+  if (err instanceof BrambleNotFoundError) {
+    console.log("Patient not found");
+  } else if (err instanceof BrambleRateLimitError) {
+    console.log(`Rate limited. Retry after ${err.retryAfter}s`);
+  } else if (err instanceof BrambleAuthError) {
+    console.log("Auth failed");
+  } else if (err instanceof BrambleAPIError) {
+    console.log(`API error ${err.statusCode}: ${err.message}`);
+  }
+}
+```
+
+## Webhook verification
+
+```typescript
+import { verifyWebhookSignature } from "@bramble-health/sdk/webhooks";
+
+// Express example
+app.post(
+  "/webhooks/bramble",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    const isValid = verifyWebhookSignature(
+      req.body,
+      req.headers["x-bramble-signature-256"] as string,
+      process.env.BRAMBLE_WEBHOOK_SECRET!
+    );
+
+    if (!isValid) return res.status(401).send("Invalid signature");
+
+    const event = JSON.parse(req.body.toString());
+    console.log("Event:", event.event);
+    res.status(200).send();
+  }
+);
+```
+
+## Next.js / Edge Runtime
+
+The SDK is compatible with Next.js API Routes and the Edge Runtime:
+
+```typescript
+// app/api/webhooks/bramble/route.ts
+import { verifyWebhookSignature } from "@bramble-health/sdk/webhooks";
+
+export async function POST(request: Request) {
+  const body = await request.text();
+  const signature = request.headers.get("x-bramble-signature-256") ?? "";
+
+  if (!verifyWebhookSignature(body, signature, process.env.BRAMBLE_WEBHOOK_SECRET!)) {
+    return new Response("Invalid signature", { status: 401 });
+  }
+
+  const event = JSON.parse(body);
+  // handle event
+  return new Response(null, { status: 200 });
+}
+```
+
+## Configuration reference
+
+```typescript
+const client = new BrambleClient({
+  clientId: "...",
+  clientSecret: "...",
+  sandbox: false,
+  timeout: 30_000,         // ms
+  maxRetries: 3,
+  retryOn429: true,
+  fetch: globalThis.fetch, // Custom fetch implementation
+});
+```

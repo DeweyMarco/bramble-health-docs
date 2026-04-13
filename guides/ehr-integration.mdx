@@ -1,0 +1,211 @@
+---
+title: "EHR Integration"
+description: "Connect Bramble Health to Epic, Cerner, Athenahealth, and other EHR systems via SMART on FHIR and direct FHIR R4 connections."
+icon: "hospital"
+---
+
+## Overview
+
+Bramble connects to electronic health record systems through **EHR Connections** — persistent, authenticated tunnels to a health system's FHIR endpoint. Once a connection is active, patient data flows into your Bramble organization and is queryable through the standard REST API.
+
+```
+Your App  ──▶  Bramble API  ──▶  EHR Adapter  ──▶  Health System EHR
+              (normalized)      (vendor-specific)   (Epic / Cerner / etc.)
+```
+
+## Supported EHR systems
+
+<CardGroup cols={2}>
+  <Card title="Epic" icon="e" color="#C41E3A">
+    SMART on FHIR R4. Supports patient search, appointments, observations,
+    medications, and clinical documents.
+  </Card>
+  <Card title="Cerner (Oracle Health)" icon="c" color="#0066CC">
+    FHIR R4 with Cerner-specific extensions. Millennium and PowerChart
+    environments supported.
+  </Card>
+  <Card title="Athenahealth" icon="a" color="#FF6600">
+    Athenahealth FHIR API (R4). Includes proprietary `athena:*` extensions
+    for practice management data.
+  </Card>
+  <Card title="eClinicalWorks" icon="e" color="#339900">
+    eClinicalWorks FHIR R4 sandbox and production environments.
+  </Card>
+  <Card title="Meditech Expanse" icon="m" color="#003087">
+    Meditech FHIR R4 API. Requires Meditech FHIR activation with your
+    Meditech account rep.
+  </Card>
+  <Card title="Custom FHIR" icon="plug" color="#6B7280">
+    Any SMART on FHIR R4 compliant system. Provide the FHIR base URL and
+    credentials.
+  </Card>
+</CardGroup>
+
+## Connection lifecycle
+
+<Steps>
+  <Step title="Create the connection">
+    Send a `POST /ehr-connections` request with your EHR vendor, FHIR base URL,
+    and auth credentials. The connection enters `pending` state.
+  </Step>
+  <Step title="Validation handshake">
+    Bramble performs a FHIR `CapabilityStatement` check and validates your
+    credentials. This takes 10–30 seconds.
+  </Step>
+  <Step title="Initial sync">
+    On first activation, Bramble performs a full patient roster sync from the
+    EHR. Depending on roster size this can take 5–60 minutes.
+  </Step>
+  <Step title="Continuous sync">
+    Once active, changes in the EHR are synced within 5 minutes via FHIR
+    subscriptions or scheduled polling (depending on EHR capabilities).
+  </Step>
+</Steps>
+
+## Create an EHR connection
+
+### SMART on FHIR (recommended)
+
+Use this for Epic, Cerner, Athenahealth, and any SMART-compliant system.
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/ehr-connections \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "system": "epic",
+    "label": "Denver General — Epic Production",
+    "fhirBaseUrl": "https://fhir.denvergeneral.org/api/FHIR/R4",
+    "auth": {
+      "type": "smart_on_fhir",
+      "clientId": "bramble-prod-client",
+      "clientSecret": "••••••••",
+      "scope": "launch patient/*.read user/*.write offline_access",
+      "tokenUrl": "https://fhir.denvergeneral.org/oauth2/token"
+    }
+  }'
+```
+
+### API key auth
+
+For systems using simple API key authentication:
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/ehr-connections \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "system": "custom",
+    "label": "Regional Clinic FHIR Server",
+    "fhirBaseUrl": "https://fhir.regionalclinic.example/r4",
+    "auth": {
+      "type": "api_key",
+      "clientId": "your-api-key"
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "id": "conn-7f3a92",
+  "system": "epic",
+  "label": "Denver General — Epic Production",
+  "status": "pending",
+  "fhirBaseUrl": "https://fhir.denvergeneral.org/api/FHIR/R4",
+  "createdAt": "2024-09-01T12:00:00Z",
+  "lastSyncedAt": null
+}
+```
+
+## Monitoring connections
+
+Check connection status by polling `GET /ehr-connections/{connectionId}` or listen for webhooks:
+
+| Event | Fired when |
+|-------|-----------|
+| `ehr_connection.activated` | Validation succeeded, initial sync started |
+| `ehr_connection.sync_completed` | A sync cycle finished |
+| `ehr_connection.error` | Auth failed or FHIR endpoint unreachable |
+
+```json
+{
+  "event": "ehr_connection.error",
+  "data": {
+    "connectionId": "conn-7f3a92",
+    "status": "error",
+    "errorMessage": "Token refresh failed: invalid_client. Check your clientSecret.",
+    "occurredAt": "2024-09-02T08:15:00Z"
+  }
+}
+```
+
+## Epic-specific setup
+
+Epic requires app registration before a SMART on FHIR connection can be made.
+
+<Steps>
+  <Step title="Register your app in Epic's App Orchard">
+    Create an Epic on FHIR application at [fhir.epic.com](https://fhir.epic.com).
+    Select **"Clinician-Facing"** application type for care coordination use cases.
+  </Step>
+  <Step title="Request required API scopes">
+    At minimum, request: `patient.read`, `user.Appointment.read`,
+    `user.Appointment.write`, `user.Observation.read`.
+  </Step>
+  <Step title="Get production credentials">
+    After Epic review, you'll receive a production `client_id`.
+    Work with the health system's Epic team to activate your app on their instance.
+  </Step>
+  <Step title="Configure in Bramble">
+    Use your Epic `client_id`, the health system's FHIR base URL, and your
+    non-production key as the `client_secret` for SMART backend services auth.
+  </Step>
+</Steps>
+
+<Note>
+  Epic's non-production environment uses a JWK-based auth flow. If you're
+  testing against Epic's sandbox, contact
+  [integrations@bramblehealth.com](mailto:integrations@bramblehealth.com)
+  for our pre-configured Epic sandbox credentials.
+</Note>
+
+## Data normalization
+
+Bramble normalizes vendor-specific FHIR dialects to a consistent structure:
+
+| EHR quirk | Bramble behavior |
+|-----------|-----------------|
+| Epic uses `NamingSystem/epic-patient-id` | Normalized to `identifier.system = http://bramblehealth.com/id/epic` |
+| Cerner drops `Patient.gender` occasionally | Bramble sets to `unknown` |
+| Athenahealth splits name differently | Normalized to FHIR `HumanName` |
+| eClinicalWorks uses non-standard date formats | Converted to ISO 8601 |
+
+Raw EHR responses are preserved in the `meta.extension` array if you need vendor-specific fields.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection stuck in 'pending'">
+    If a connection stays `pending` for more than 5 minutes, the FHIR handshake
+    likely failed silently. Check:
+    1. Is the `fhirBaseUrl` reachable from the internet?
+    2. Does your `tokenUrl` return a valid OAuth response?
+    3. Does your `scope` match what the EHR expects?
+
+    Try `GET /ehr-connections/{id}` — if `status` is `error`, check `errorMessage`.
+  </Accordion>
+
+  <Accordion title="401 errors after initial activation">
+    Your refresh token may have expired. Epic and Cerner refresh tokens typically
+    expire after 30–90 days. Re-authenticate via the dashboard:
+    **Settings → EHR Connections → Re-authenticate**.
+  </Accordion>
+
+  <Accordion title="Patients not appearing after sync">
+    Patient sync is scoped to your registered FHIR access. Verify your scopes
+    include `patient.read` and that your Epic/Cerner app has been granted access
+    to the relevant patient population by the health system.
+  </Accordion>
+</AccordionGroup>

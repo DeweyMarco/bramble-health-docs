@@ -1,0 +1,114 @@
+---
+title: "Bramble Health Developer Docs"
+description: "HIPAA-compliant APIs for EHR integration, care coordination, and clinical data — built for engineering teams at modern health systems."
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="Bramble Health API platform overview"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="Bramble Health API platform overview"
+/>
+
+## Build on Bramble Health
+
+Bramble Health gives you a single, secure API surface for everything your care team workflows need — from reading patient demographics out of Epic to coordinating multi-disciplinary care plans across facilities.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="bolt"
+    href="/quickstart"
+  >
+    Get your first API call running in under 5 minutes.
+  </Card>
+  <Card
+    title="API Reference"
+    icon="terminal"
+    href="/api-reference/overview"
+  >
+    Full endpoint documentation with an interactive playground.
+  </Card>
+  <Card
+    title="EHR Integration"
+    icon="hospital"
+    href="/guides/ehr-integration"
+  >
+    Connect to Epic, Cerner, Athenahealth, and more.
+  </Card>
+  <Card
+    title="Care Coordination"
+    icon="users"
+    href="/guides/care-coordination"
+  >
+    Build shared care plans across providers and facilities.
+  </Card>
+</CardGroup>
+
+## Platform highlights
+
+<CardGroup cols={3}>
+  <Card title="FHIR R4 Native" icon="layer-group">
+    Built on HL7 FHIR R4. Use familiar resources — Patient, Observation,
+    CarePlan — without learning a proprietary data model.
+  </Card>
+  <Card title="HIPAA-Ready" icon="shield-check">
+    SOC 2 Type II certified. BAAs available for all plans. PHI stays
+    encrypted at rest (AES-256) and in transit (TLS 1.2+).
+  </Card>
+  <Card title="Real-Time Events" icon="bolt">
+    Subscribe to webhooks for patient updates, appointment changes,
+    and EHR sync completions — no polling needed.
+  </Card>
+  <Card title="9 EHR Connectors" icon="plug">
+    Pre-built adapters for Epic, Cerner, Athenahealth, eClinicalWorks,
+    Meditech, and any SMART on FHIR system.
+  </Card>
+  <Card title="Multi-Tenant" icon="building">
+    Manage multiple health system connections from one organization.
+    Strict data isolation between tenants.
+  </Card>
+  <Card title="SDKs" icon="code">
+    Official Python and Node.js SDKs. Auto-generated types from
+    our OpenAPI spec for TypeScript projects.
+  </Card>
+</CardGroup>
+
+## Who uses Bramble Health
+
+<Tabs>
+  <Tab title="Health Systems">
+    Connect your existing EHR to a modern API layer. Surface structured
+    clinical data to care management applications, patient portals, and
+    analytics pipelines without ripping out legacy systems.
+
+    **Common use cases:**
+    - Unified patient search across multiple EHR instances
+    - Real-time appointment sync to scheduling apps
+    - Automated care-gap detection via observation feeds
+  </Tab>
+  <Tab title="Digital Health Companies">
+    Skip the FHIR integration complexity. Plug Bramble's API into your
+    product and get normalized patient data from day one — across any
+    EHR your customers use.
+
+    **Common use cases:**
+    - Remote patient monitoring apps
+    - Medication adherence platforms
+    - Chronic disease management tools
+  </Tab>
+  <Tab title="Care Management Orgs">
+    Coordinate care across a patient's full care team — PCPs, specialists,
+    home health, and social services — through shared care plans and
+    real-time observation feeds.
+
+    **Common use cases:**
+    - Complex care management programs
+    - Transitional care coordination
+    - Value-based care reporting
+  </Tab>
+</Tabs>

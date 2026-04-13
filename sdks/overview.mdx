@@ -1,0 +1,67 @@
+---
+title: "SDKs"
+description: "Official client libraries for the Bramble Health API."
+icon: "code"
+---
+
+## Official SDKs
+
+Bramble publishes official SDK packages for Python and Node.js. Both are generated from the OpenAPI spec and kept in sync with every API release.
+
+<CardGroup cols={2}>
+  <Card
+    title="Python SDK"
+    icon="python"
+    href="/sdks/python"
+    color="#3776AB"
+  >
+    `bramble-health` on PyPI. Supports Python 3.9+. Includes async support
+    via `asyncio`.
+  </Card>
+  <Card
+    title="Node.js SDK"
+    icon="node-js"
+    href="/sdks/node"
+    color="#339933"
+  >
+    `@bramble-health/sdk` on npm. TypeScript-first with full type definitions.
+    Supports Node 18+.
+  </Card>
+</CardGroup>
+
+## Community SDKs
+
+These SDKs are maintained by the community and not officially supported by Bramble:
+
+| Language | Package | Maintainer |
+|----------|---------|-----------|
+| Go | `github.com/community/bramble-go` | @healthdev |
+| Ruby | `bramble_health` on RubyGems | @rubyhealth |
+| Java | `com.bramble:bramble-java` | @javahealth |
+
+## Generate your own
+
+Every Bramble SDK is generated from our OpenAPI spec. You can generate a client in any language using [OpenAPI Generator](https://openapi-generator.tech):
+
+```bash
+# Download the spec
+curl https://api.bramblehealth.com/v1/openapi.yaml -o bramble-openapi.yaml
+
+# Generate a client (example: Go)
+npx @openapitools/openapi-generator-cli generate \
+  -i bramble-openapi.yaml \
+  -g go \
+  -o ./bramble-go-client
+```
+
+## Feature comparison
+
+| Feature | Python | Node.js |
+|---------|--------|---------|
+| Auto token refresh | ✓ | ✓ |
+| Retry with backoff | ✓ | ✓ |
+| Async/await support | ✓ | ✓ |
+| Webhook signature verification | ✓ | ✓ |
+| Full TypeScript types | — | ✓ |
+| FHIR type helpers | ✓ | ✓ |
+| Paginator utilities | ✓ | ✓ |

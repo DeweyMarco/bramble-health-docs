@@ -1,0 +1,186 @@
+---
+title: "Authentication"
+description: "OAuth 2.0 client credentials, token lifecycle, scopes, and best practices for securely accessing the Bramble Health API."
+icon: "lock"
+---
+
+## Overview
+
+The Bramble Health API uses **OAuth 2.0 Client Credentials** flow. Your application exchanges a `client_id` and `client_secret` for a short-lived JWT bearer token, then includes that token in every API request.
+
+```
+Your App          Bramble Auth          Bramble API
+    │                   │                    │
+    │── POST /auth/token ──▶                 │
+    │                   │── validate ──▶     │
+    │◀── access_token ──│                    │
+    │                                        │
+    │── GET /patients ───────────────────────▶
+    │    Authorization: Bearer <token>        │
+    │◀── 200 OK ──────────────────────────── │
+```
+
+## Getting credentials
+
+1. Log in to the [Bramble dashboard](https://app.bramblehealth.com)
+2. Navigate to **Settings → API Keys**
+3. Click **Create API Key** and select the appropriate scopes
+4. Copy and securely store the `client_id` and `client_secret`
+
+<Warning>
+  The `client_secret` is shown **once** at creation time. Store it in your
+  secrets manager immediately — it cannot be retrieved again.
+</Warning>
+
+## Requesting a token
+
+`POST /auth/token`
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "grant_type": "client_credentials"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "rt_Xk9mNp3QrL7wZ2s",
+  "scope": "patient:read appointment:write"
+}
+```
+
+## Using the token
+
+Include the `access_token` in every API request as a `Bearer` header:
+
+```bash
+curl https://api.bramblehealth.com/v1/patients \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+## Token lifecycle
+
+| Token | Lifetime | Action on expiry |
+|-------|----------|-----------------|
+| `access_token` | 1 hour | Refresh using `refresh_token` |
+| `refresh_token` | 30 days | Re-authenticate with client credentials |
+
+### Refreshing an access token
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "refresh_token",
+    "refresh_token": "rt_Xk9mNp3QrL7wZ2s",
+    "client_id": "YOUR_CLIENT_ID"
+  }'
+```
+
+<Tip>
+  Proactively refresh tokens 5 minutes before expiry rather than waiting for
+  a `401`. Cache the `expires_in` value and schedule a background refresh.
+</Tip>
+
+## Scopes
+
+Tokens are scoped to limit what resources your application can access. Request only the scopes your application needs.
+
+<AccordionGroup>
+  <Accordion title="Patient scopes">
+    | Scope | Description |
+    |-------|-------------|
+    | `patient:read` | Read patient demographics |
+    | `patient:write` | Create and update patients |
+    | `patient:delete` | Soft-delete patients |
+  </Accordion>
+
+  <Accordion title="Clinical scopes">
+    | Scope | Description |
+    |-------|-------------|
+    | `appointment:read` | View appointments |
+    | `appointment:write` | Book and cancel appointments |
+    | `observation:read` | Read clinical observations |
+    | `observation:write` | Record new observations |
+    | `medication:read` | View medication requests |
+    | `medication:write` | Create medication orders |
+    | `care-plan:read` | View care plans |
+    | `care-plan:write` | Create and update care plans |
+  </Accordion>
+
+  <Accordion title="Integration scopes">
+    | Scope | Description |
+    |-------|-------------|
+    | `ehr-connection:read` | View EHR connections |
+    | `ehr-connection:write` | Create and manage EHR connections |
+    | `webhook:read` | View webhook subscriptions |
+    | `webhook:write` | Create and delete webhooks |
+  </Accordion>
+
+  <Accordion title="Elevated scopes">
+    | Scope | Description |
+    |-------|-------------|
+    | `dea-auth` | Required for controlled substance prescriptions |
+    | `phi:export` | Bulk PHI export (requires BAA confirmation) |
+    | `admin` | Organization admin operations |
+  </Accordion>
+</AccordionGroup>
+
+## Error responses
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| `401` | `invalid_token` | Token is missing, malformed, or expired |
+| `401` | `token_expired` | Token has expired — refresh or re-authenticate |
+| `403` | `insufficient_scope` | Token lacks the required scope for this operation |
+| `403` | `baa_required` | Operation requires a signed BAA |
+
+Example error:
+
+```json
+{
+  "resourceType": "OperationOutcome",
+  "issue": [
+    {
+      "severity": "error",
+      "code": "security",
+      "diagnostics": "Token is missing the 'medication:write' scope."
+    }
+  ]
+}
+```
+
+## Security best practices
+
+<Steps>
+  <Step title="Store secrets in a secrets manager">
+    Never hardcode `client_secret` in source code. Use AWS Secrets Manager,
+    HashiCorp Vault, or equivalent. Rotate secrets every 90 days.
+  </Step>
+  <Step title="Use least-privilege scopes">
+    Request only the scopes your application needs. A read-only reporting
+    service should never have `patient:write` or `medication:write`.
+  </Step>
+  <Step title="Cache and reuse tokens">
+    One token is valid for 1 hour. Requesting a new token per API call
+    is wasteful and will trigger rate limiting on the auth endpoint.
+  </Step>
+  <Step title="Handle 401s gracefully">
+    Implement a retry loop: on `401`, attempt one token refresh. If the
+    refresh fails, surface the error to your application rather than
+    retrying indefinitely.
+  </Step>
+  <Step title="Audit token usage">
+    Every token issuance is logged in your Bramble audit log
+    (Settings → Audit Log). Review for unexpected client activity.
+  </Step>
+</Steps>

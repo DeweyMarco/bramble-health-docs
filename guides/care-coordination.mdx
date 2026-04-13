@@ -1,0 +1,233 @@
+---
+title: "Care Coordination"
+description: "Build longitudinal care plans, coordinate multi-provider teams, and track patient goals across care settings."
+icon: "users"
+---
+
+## Overview
+
+Bramble's care coordination layer lets you create and manage **CarePlans** — shared, living documents that describe a patient's goals, interventions, and care team across providers and facilities.
+
+A CarePlan in Bramble is a FHIR R4 `CarePlan` resource extended with Bramble-specific coordination features: real-time team notifications, goal progress tracking, and cross-EHR activity sync.
+
+## Core resources
+
+| Resource | Description |
+|----------|-------------|
+| `CarePlan` | The longitudinal plan with goals and activities |
+| `CareTeam` | The practitioners and organizations involved |
+| `Goal` | A measurable outcome the care plan targets |
+| `Observation` | Measurements that track progress toward goals |
+
+## Creating a care plan
+
+A minimal care plan requires a patient, status, and intent. In practice you'll want to include a care team, goals, and activities from the start.
+
+```bash
+curl -X POST https://api.bramblehealth.com/v1/care-plans \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceType": "CarePlan",
+    "status": "active",
+    "intent": "plan",
+    "title": "Type 2 Diabetes Management — Emily Johnson",
+    "description": "Comprehensive plan for blood glucose control and cardiovascular risk reduction.",
+    "subject": { "reference": "Patient/pt-00456" },
+    "period": {
+      "start": "2024-09-01",
+      "end": "2025-09-01"
+    },
+    "careTeam": [
+      { "reference": "CareTeam/ct-0022" }
+    ],
+    "category": [
+      {
+        "coding": [{
+          "system": "http://snomed.info/sct",
+          "code": "736368003",
+          "display": "Chronic disease management plan"
+        }]
+      }
+    ],
+    "activity": [
+      {
+        "detail": {
+          "code": {
+            "coding": [{
+              "system": "http://snomed.info/sct",
+              "code": "229070002",
+              "display": "Diabetes self-management education"
+            }]
+          },
+          "status": "in-progress",
+          "description": "Complete 6-session diabetes education program at Denver Health"
+        }
+      },
+      {
+        "detail": {
+          "code": {
+            "coding": [{
+              "system": "http://snomed.info/sct",
+              "code": "229070002",
+              "display": "HbA1c monitoring"
+            }]
+          },
+          "status": "scheduled",
+          "scheduledPeriod": {
+            "start": "2024-09-01",
+            "end": "2025-09-01"
+          },
+          "description": "HbA1c check every 3 months. Target: < 7.0%"
+        }
+      }
+    ]
+  }'
+```
+
+## Multi-provider coordination
+
+Care plans shine when multiple providers can read and contribute to a single source of truth.
+
+<Steps>
+  <Step title="Create a CareTeam">
+    Add all practitioners who need access to the plan. Care team members
+    receive webhook notifications when the plan is updated.
+
+    ```json
+    POST /care-teams
+    {
+      "resourceType": "CareTeam",
+      "status": "active",
+      "name": "Emily Johnson's Diabetes Care Team",
+      "subject": { "reference": "Patient/pt-00456" },
+      "participant": [
+        {
+          "role": [{ "coding": [{ "code": "primary-care", "display": "Primary Care Physician" }] }],
+          "member": { "reference": "Practitioner/prac-0012" }
+        },
+        {
+          "role": [{ "coding": [{ "code": "specialist", "display": "Endocrinologist" }] }],
+          "member": { "reference": "Practitioner/prac-0089" }
+        },
+        {
+          "role": [{ "coding": [{ "code": "care-coordinator" }] }],
+          "member": { "reference": "Practitioner/prac-0103" }
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Link the care plan to the team">
+    Reference the CareTeam in your CarePlan's `careTeam` array.
+  </Step>
+  <Step title="Subscribe each provider to updates">
+    Register a webhook for `care_plan.updated` to notify each provider's
+    system when the plan changes.
+  </Step>
+  <Step title="Record observations against the plan">
+    When a provider records an HbA1c result via `POST /observations`,
+    reference the care plan in the `basedOn` field to link the observation
+    to the relevant activity.
+  </Step>
+</Steps>
+
+## Tracking goals and progress
+
+Goals are separate FHIR resources referenced from the CarePlan. Each goal has a target value and a lifecycle status.
+
+```json
+POST /goals
+{
+  "resourceType": "Goal",
+  "lifecycleStatus": "active",
+  "description": {
+    "text": "Reduce HbA1c to below 7.0%"
+  },
+  "subject": { "reference": "Patient/pt-00456" },
+  "target": [
+    {
+      "measure": {
+        "coding": [{
+          "system": "http://loinc.org",
+          "code": "4548-4",
+          "display": "Hemoglobin A1c/Hemoglobin.total in Blood"
+        }]
+      },
+      "detailQuantity": {
+        "value": 7.0,
+        "comparator": "<",
+        "unit": "%"
+      },
+      "dueDate": "2025-03-01"
+    }
+  ]
+}
+```
+
+### Checking progress
+
+Query observations linked to a goal to calculate progress:
+
+```bash
+GET /observations?patient=pt-00456&code=4548-4&date=ge2024-09-01&_sort=-date
+```
+
+Bramble auto-calculates goal progress as a percentage when observations match the goal's `measure` LOINC code.
+
+## Transition of care
+
+When a patient is discharged or transitions between care settings, use the `TransitionSummary` extension to flag the handoff:
+
+```json
+PATCH /care-plans/cp-7741
+{
+  "status": "on-hold",
+  "note": [
+    {
+      "text": "Patient admitted to Denver General 2024-09-15. Resuming home care plan upon discharge."
+    }
+  ]
+}
+```
+
+<Note>
+  Bramble fires a `care_plan.status_changed` event when a plan transitions
+  between `active`, `on-hold`, `completed`, and `revoked`. Subscribe your
+  care coordinator systems to this event for automated handoff workflows.
+</Note>
+
+## Example: Transitional care coordination workflow
+
+```
+Discharge from hospital
+        │
+        ▼
+  POST /care-plans          ← Create post-acute plan
+  (status: active)
+        │
+        ▼
+  POST /care-teams          ← PCP + home health + social worker
+        │
+        ▼
+  POST /appointments        ← Schedule 7-day follow-up
+        │
+        ▼
+Webhook: appointment.booked ← Notify home health agency
+        │
+        ▼
+  POST /observations        ← Home health records vitals
+        │
+        ▼
+Webhook: observation.created ← Notify PCP of concerning values
+```
+
+## Care plan statuses
+
+| Status | Meaning |
+|--------|---------|
+| `draft` | In development, not yet active |
+| `active` | Currently guiding care |
+| `on-hold` | Temporarily suspended (e.g., acute hospitalization) |
+| `completed` | Goals achieved or time period elapsed |
+| `revoked` | Cancelled before completion |

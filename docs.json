@@ -1,0 +1,113 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Bramble Health",
+  "theme": "mint",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#1A8C52",
+    "primaryLight": "#D1FAE5",
+    "primaryDark": "#0F5C36",
+    "background": {
+      "light": "#FAFAFA",
+      "dark": "#0C1A13"
+    }
+  },
+  "fonts": {
+    "body": "Inter",
+    "heading": "Inter"
+  },
+  "navbar": {
+    "style": "default",
+    "items": [
+      {
+        "type": "link",
+        "href": "https://app.bramblehealth.com",
+        "label": "Dashboard"
+      }
+    ]
+  },
+  "topbarCtaButton": {
+    "name": "Get API Access",
+    "url": "https://app.bramblehealth.com/signup"
+  },
+  "anchors": [
+    {
+      "name": "API Status",
+      "icon": "signal",
+      "url": "https://status.bramblehealth.com"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/bramble-health"
+    },
+    {
+      "name": "Support",
+      "icon": "headset",
+      "url": "https://support.bramblehealth.com"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Overview",
+      "icon": "house",
+      "pages": [
+        "index",
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Guides",
+      "icon": "book-open",
+      "pages": [
+        "guides/authentication",
+        "guides/ehr-integration",
+        "guides/care-coordination",
+        "guides/webhooks",
+        "guides/rate-limits",
+        "guides/compliance"
+      ]
+    },
+    {
+      "group": "SDKs",
+      "icon": "code",
+      "pages": [
+        "sdks/overview",
+        "sdks/python",
+        "sdks/node"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "icon": "terminal",
+      "pages": [
+        "api-reference/overview"
+      ],
+      "openapi": "api-reference/openapi.yaml"
+    }
+  ],
+  "footer": {
+    "socials": {
+      "x": "https://x.com/bramblehealth",
+      "github": "https://github.com/bramble-health",
+      "linkedin": "https://linkedin.com/company/bramble-health"
+    }
+  },
+  "api": {
+    "playground": {
+      "enabled": true
+    },
+    "baseUrl": "https://api.bramblehealth.com/v1"
+  },
+  "modeToggle": {
+    "default": "light"
+  },
+  "seo": {
+    "indexHiddenPages": false
+  }
+}

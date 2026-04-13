@@ -1,0 +1,141 @@
+---
+title: "API Reference Overview"
+description: "The Bramble Health REST API — base URLs, authentication, response formats, and error codes."
+icon: "terminal"
+---
+
+## Base URLs
+
+| Environment | Base URL |
+|-------------|----------|
+| Production | `https://api.bramblehealth.com/v1` |
+| Sandbox | `https://sandbox.bramblehealth.com/v1` |
+
+All endpoints are HTTPS-only. HTTP requests are rejected with `400 Bad Request`.
+
+## Authentication
+
+All requests require a `Bearer` token in the `Authorization` header:
+
+```http
+GET /patients HTTP/1.1
+Host: api.bramblehealth.com
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+```
+
+See the [Authentication guide](/guides/authentication) for token acquisition, refresh, and scope management.
+
+## Request format
+
+- Request bodies must be JSON with `Content-Type: application/json`
+- FHIR resources follow HL7 FHIR R4 structure
+- All dates and times use ISO 8601 (e.g., `2024-09-10`, `2024-09-10T09:00:00-06:00`)
+- References use the FHIR `ResourceType/id` pattern (e.g., `Patient/pt-00456`)
+
+## Response format
+
+All responses return JSON. FHIR resources are returned as FHIR bundles (for lists) or individual resources (for single-resource operations).
+
+**Success response (single resource):**
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "pt-00456",
+  "meta": {
+    "versionId": "3",
+    "lastUpdated": "2024-09-10T14:22:00Z"
+  },
+  "name": [{ "use": "official", "family": "Johnson", "given": ["Emily"] }],
+  "birthDate": "1990-07-14"
+}
+```
+
+**Success response (list/search):**
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 47,
+  "page": 1,
+  "limit": 20,
+  "entry": [
+    { "resource": { "resourceType": "Patient", "id": "pt-00456", ... } },
+    { "resource": { "resourceType": "Patient", "id": "pt-00789", ... } }
+  ]
+}
+```
+
+## Error format
+
+Errors follow the FHIR `OperationOutcome` structure:
+
+```json
+{
+  "resourceType": "OperationOutcome",
+  "issue": [
+    {
+      "severity": "error",
+      "code": "not-found",
+      "diagnostics": "Patient with id 'pt-99999' was not found.",
+      "location": ["Patient.id"]
+    }
+  ]
+}
+```
+
+## HTTP status codes
+
+| Status | Meaning |
+|--------|---------|
+| `200 OK` | Successful GET, PUT, PATCH |
+| `201 Created` | Successful POST (resource created) |
+| `204 No Content` | Successful DELETE |
+| `400 Bad Request` | Validation error in request body or params |
+| `401 Unauthorized` | Missing or invalid bearer token |
+| `403 Forbidden` | Token lacks required scope or BAA not on file |
+| `404 Not Found` | Resource does not exist |
+| `409 Conflict` | Duplicate resource or state conflict |
+| `422 Unprocessable` | Request parsed but semantically invalid |
+| `429 Too Many Requests` | Rate limit exceeded |
+| `500 Internal Server Error` | Unexpected server error |
+
+## Pagination
+
+List endpoints accept `page` and `limit` query parameters:
+
+```bash
+GET /patients?page=2&limit=50
+```
+
+- Default `limit`: 20
+- Max `limit`: 100
+- Response includes `total`, `page`, and `limit` fields
+
+## FHIR search modifiers
+
+Search endpoints support standard FHIR search modifiers:
+
+| Modifier | Syntax | Example |
+|----------|--------|---------|
+| Exact | `param=value` | `family=Smith` |
+| Contains | `param:contains=value` | `family:contains=smi` |
+| Date range | `param=geYYYY-MM-DD` | `date=ge2024-01-01` |
+| Missing | `param:missing=true` | `gender:missing=true` |
+
+## Idempotency
+
+For `POST` requests, you can supply an `Idempotency-Key` header to prevent duplicate resource creation on network retries:
+
+```http
+POST /appointments
+Idempotency-Key: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+The same key can be resent within **24 hours** and will return the original response without creating a duplicate.
+
+## Explore the API
+
+Use the interactive API playground in the sidebar to test endpoints directly against the sandbox. Your requests are pre-filled with a sandbox token — no setup required.

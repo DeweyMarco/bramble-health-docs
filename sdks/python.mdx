@@ -1,0 +1,146 @@
+---
+title: "Python SDK"
+description: "Install and use the Bramble Health Python SDK for synchronous and async integrations."
+icon: "python"
+---
+
+## Installation
+
+```bash
+pip install bramble-health
+```
+
+Requires Python 3.9+.
+
+## Basic usage
+
+```python
+from bramble import BrambleClient
+
+client = BrambleClient(
+    client_id="YOUR_CLIENT_ID",
+    client_secret="YOUR_CLIENT_SECRET",
+    base_url="https://api.bramblehealth.com/v1",  # omit for production default
+)
+
+# Search for patients
+patients = client.patients.search(family="Smith", birthdate="1985-04-23")
+for patient in patients:
+    print(patient.id, patient.name[0].family)
+
+# Book an appointment
+appointment = client.appointments.create({
+    "resourceType": "Appointment",
+    "status": "booked",
+    "start": "2024-09-10T09:00:00-06:00",
+    "end": "2024-09-10T09:30:00-06:00",
+    "participant": [
+        {"actor": {"reference": "Patient/pt-00123"}, "status": "accepted"},
+        {"actor": {"reference": "Practitioner/prac-0012"}, "status": "accepted"},
+    ],
+})
+print("Booked:", appointment.id)
+```
+
+The SDK handles token acquisition, caching, and refresh automatically.
+
+## Sandbox mode
+
+```python
+from bramble import BrambleClient
+
+client = BrambleClient(
+    client_id="YOUR_CLIENT_ID",
+    client_secret="YOUR_CLIENT_SECRET",
+    sandbox=True,  # Uses sandbox.bramblehealth.com
+)
+```
+
+## Async support
+
+```python
+import asyncio
+from bramble.async_client import AsyncBrambleClient
+
+async def main():
+    async with AsyncBrambleClient(
+        client_id="YOUR_CLIENT_ID",
+        client_secret="YOUR_CLIENT_SECRET",
+    ) as client:
+        patients = await client.patients.search(family="Johnson")
+        print(f"Found {len(patients)} patients")
+
+asyncio.run(main())
+```
+
+## Pagination
+
+All list methods return a `Page` object with an `auto_paging_iter()` helper:
+
+```python
+# Iterate all patients without manually handling pages
+for patient in client.patients.search().auto_paging_iter():
+    process(patient)
+
+# Or manually paginate
+page = client.patients.search(limit=50)
+while page:
+    for patient in page.items:
+        process(patient)
+    page = page.next_page()
+```
+
+## Error handling
+
+```python
+from bramble.exceptions import (
+    BrambleAuthError,
+    BrambleNotFoundError,
+    BrambleRateLimitError,
+    BrambleAPIError,
+)
+
+try:
+    patient = client.patients.get("pt-nonexistent")
+except BrambleNotFoundError:
+    print("Patient not found")
+except BrambleRateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after}s")
+except BrambleAuthError:
+    print("Authentication failed — check credentials")
+except BrambleAPIError as e:
+    print(f"API error {e.status_code}: {e.message}")
+```
+
+## Webhook verification
+
+```python
+from bramble.webhooks import verify_signature
+
+def handle_webhook(request):
+    payload = request.body
+    signature = request.headers.get("X-Bramble-Signature-256", "")
+
+    if not verify_signature(payload, signature, secret="your-webhook-secret"):
+        raise ValueError("Invalid signature")
+
+    event = request.json()
+    print(f"Received event: {event['event']}")
+```
+
+## Configuration reference
+
+```python
+from bramble import BrambleClient
+
+client = BrambleClient(
+    client_id="...",
+    client_secret="...",
+    base_url="https://api.bramblehealth.com/v1",
+    sandbox=False,
+    timeout=30,           # Request timeout in seconds
+    max_retries=3,        # Retry attempts on 5xx errors
+    retry_on_429=True,    # Auto-retry with backoff on rate limits
+    http_client=None,     # Inject a custom httpx client
+)
+```

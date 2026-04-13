@@ -1,0 +1,233 @@
+---
+title: "Quickstart"
+description: "Make your first Bramble Health API call in under 5 minutes."
+icon: "bolt"
+---
+
+## Prerequisites
+
+- A Bramble Health account ([sign up free](https://app.bramblehealth.com/signup))
+- An API key from the [developer dashboard](https://app.bramblehealth.com/settings/api-keys)
+- `curl` or any HTTP client
+
+<Note>
+  All examples below use the **sandbox** environment (`sandbox.bramblehealth.com`).
+  Switch the base URL to `api.bramblehealth.com` when you're ready for production.
+</Note>
+
+## Step 1 — Get an access token
+
+Bramble uses OAuth 2.0 client credentials. Exchange your `client_id` and `client_secret` for a short-lived JWT.
+
+<CodeGroup>
+  ```bash cURL
+  curl -X POST https://sandbox.bramblehealth.com/v1/auth/token \
+    -H "Content-Type: application/json" \
+    -d '{
+      "client_id": "YOUR_CLIENT_ID",
+      "client_secret": "YOUR_CLIENT_SECRET",
+      "grant_type": "client_credentials"
+    }'
+  ```
+
+  ```python Python
+  import requests
+
+  resp = requests.post(
+      "https://sandbox.bramblehealth.com/v1/auth/token",
+      json={
+          "client_id": "YOUR_CLIENT_ID",
+          "client_secret": "YOUR_CLIENT_SECRET",
+          "grant_type": "client_credentials",
+      },
+  )
+  token = resp.json()["access_token"]
+  ```
+
+  ```javascript Node.js
+  const res = await fetch("https://sandbox.bramblehealth.com/v1/auth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: "YOUR_CLIENT_ID",
+      client_secret: "YOUR_CLIENT_SECRET",
+      grant_type: "client_credentials",
+    }),
+  });
+  const { access_token } = await res.json();
+  ```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "rt_..."
+}
+```
+
+Tokens expire after **1 hour**. Store and reuse the token; don't request a new one for every API call.
+
+## Step 2 — Search for a patient
+
+Use the `family` and `birthdate` parameters to look up a patient.
+
+<CodeGroup>
+  ```bash cURL
+  curl "https://sandbox.bramblehealth.com/v1/patients?family=Smith&birthdate=1985-04-23" \
+    -H "Authorization: Bearer $ACCESS_TOKEN"
+  ```
+
+  ```python Python
+  patients = requests.get(
+      "https://sandbox.bramblehealth.com/v1/patients",
+      headers={"Authorization": f"Bearer {token}"},
+      params={"family": "Smith", "birthdate": "1985-04-23"},
+  ).json()
+
+  for entry in patients["entry"]:
+      p = entry["resource"]
+      print(p["id"], p["name"][0]["family"])
+  ```
+
+  ```javascript Node.js
+  const res = await fetch(
+    "https://sandbox.bramblehealth.com/v1/patients?family=Smith&birthdate=1985-04-23",
+    { headers: { Authorization: `Bearer ${access_token}` } }
+  );
+  const bundle = await res.json();
+  bundle.entry.forEach(({ resource }) =>
+    console.log(resource.id, resource.name[0].family)
+  );
+  ```
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 1,
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "pt-00123",
+        "name": [{ "use": "official", "family": "Smith", "given": ["Jane"] }],
+        "gender": "female",
+        "birthDate": "1985-04-23",
+        "meta": {
+          "lastUpdated": "2024-08-15T14:22:00Z"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Step 3 — Create an appointment
+
+Book a 30-minute visit for the patient you just found.
+
+<CodeGroup>
+  ```bash cURL
+  curl -X POST https://sandbox.bramblehealth.com/v1/appointments \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "resourceType": "Appointment",
+      "status": "booked",
+      "start": "2024-09-10T09:00:00-06:00",
+      "end": "2024-09-10T09:30:00-06:00",
+      "participant": [
+        { "actor": { "reference": "Patient/pt-00123" }, "status": "accepted" },
+        { "actor": { "reference": "Practitioner/prac-0012" }, "status": "accepted" }
+      ]
+    }'
+  ```
+
+  ```python Python
+  appt = requests.post(
+      "https://sandbox.bramblehealth.com/v1/appointments",
+      headers={"Authorization": f"Bearer {token}"},
+      json={
+          "resourceType": "Appointment",
+          "status": "booked",
+          "start": "2024-09-10T09:00:00-06:00",
+          "end": "2024-09-10T09:30:00-06:00",
+          "participant": [
+              {"actor": {"reference": "Patient/pt-00123"}, "status": "accepted"},
+              {"actor": {"reference": "Practitioner/prac-0012"}, "status": "accepted"},
+          ],
+      },
+  ).json()
+  print("Appointment ID:", appt["id"])
+  ```
+
+  ```javascript Node.js
+  const appt = await fetch(
+    "https://sandbox.bramblehealth.com/v1/appointments",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        resourceType: "Appointment",
+        status: "booked",
+        start: "2024-09-10T09:00:00-06:00",
+        end: "2024-09-10T09:30:00-06:00",
+        participant: [
+          { actor: { reference: "Patient/pt-00123" }, status: "accepted" },
+          { actor: { reference: "Practitioner/prac-0012" }, status: "accepted" },
+        ],
+      }),
+    }
+  ).then((r) => r.json());
+
+  console.log("Appointment ID:", appt.id);
+  ```
+</CodeGroup>
+
+## Step 4 — Subscribe to events (optional)
+
+Get notified when the appointment status changes.
+
+```bash
+curl -X POST https://sandbox.bramblehealth.com/v1/webhooks \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-app.example.com/webhooks/bramble",
+    "events": ["appointment.fulfilled", "appointment.cancelled"],
+    "secret": "your-signing-secret",
+    "active": true
+  }'
+```
+
+<Check>
+  You've made your first Bramble API calls! Patient search, appointment booking,
+  and webhook setup — the three primitives most workflows are built on.
+</Check>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication deep dive" icon="lock" href="/guides/authentication">
+    Token lifecycle, refresh flows, and scope management.
+  </Card>
+  <Card title="Connect an EHR" icon="hospital" href="/guides/ehr-integration">
+    Pull live data from Epic, Cerner, or Athenahealth.
+  </Card>
+  <Card title="Build a care plan" icon="clipboard-list" href="/guides/care-coordination">
+    Create and coordinate multi-provider care plans.
+  </Card>
+  <Card title="Install an SDK" icon="code" href="/sdks/overview">
+    Use our official Python or Node.js client libraries.
+  </Card>
+</CardGroup>

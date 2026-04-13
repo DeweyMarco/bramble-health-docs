@@ -1,0 +1,132 @@
+---
+title: "Rate Limits"
+description: "Understand Bramble's rate limiting policies and how to build resilient integrations."
+icon: "gauge"
+---
+
+## Overview
+
+Bramble enforces rate limits to ensure fair use and platform stability. Limits are applied per API key and reset every **60 seconds**.
+
+## Limits by plan
+
+| Plan | Requests/min | Burst allowance | Webhook deliveries/min |
+|------|-------------|-----------------|----------------------|
+| Starter | 60 | 120 (2x for 10 sec) | 200 |
+| Growth | 300 | 600 (2x for 10 sec) | 1,000 |
+| Enterprise | Custom | Custom | Custom |
+
+<Note>
+  The sandbox environment has a flat limit of **120 requests/min** regardless
+  of plan. This is intentional — production plans have higher limits.
+</Note>
+
+## Rate limit headers
+
+Every response includes headers that tell you your current usage:
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Total requests allowed per minute |
+| `X-RateLimit-Remaining` | Requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the window resets |
+| `Retry-After` | Seconds to wait (only on `429` responses) |
+
+Example headers:
+
+```http
+HTTP/1.1 200 OK
+X-RateLimit-Limit: 300
+X-RateLimit-Remaining: 247
+X-RateLimit-Reset: 1725964860
+```
+
+## Handling 429 responses
+
+When you exceed the rate limit, the API returns `429 Too Many Requests`:
+
+```json
+{
+  "resourceType": "OperationOutcome",
+  "issue": [
+    {
+      "severity": "error",
+      "code": "throttled",
+      "diagnostics": "Rate limit exceeded. Try again in 12 seconds.",
+      "location": ["X-RateLimit-Reset"]
+    }
+  ]
+}
+```
+
+## Retry strategy
+
+Implement exponential backoff with jitter when you receive a `429`:
+
+<CodeGroup>
+  ```python Python
+  import time
+  import random
+  import requests
+
+  def call_with_retry(url, headers, max_retries=5):
+      for attempt in range(max_retries):
+          response = requests.get(url, headers=headers)
+
+          if response.status_code != 429:
+              return response
+
+          retry_after = int(response.headers.get("Retry-After", 5))
+          jitter = random.uniform(0, 1)
+          sleep_time = retry_after + jitter
+          time.sleep(sleep_time)
+
+      raise Exception("Max retries exceeded")
+  ```
+
+  ```javascript Node.js
+  async function callWithRetry(url, headers, maxRetries = 5) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const res = await fetch(url, { headers });
+
+      if (res.status !== 429) return res;
+
+      const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
+      const jitter = Math.random();
+      await new Promise((r) => setTimeout(r, (retryAfter + jitter) * 1000));
+    }
+    throw new Error("Max retries exceeded");
+  }
+  ```
+</CodeGroup>
+
+## Endpoint-specific limits
+
+Some endpoints have lower limits due to their computational cost:
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /auth/token` | 10 requests/min |
+| `GET /patients` (search) | 30 requests/min |
+| `POST /ehr-connections` | 5 requests/min |
+| `POST /webhooks/{id}/test` | 10 requests/min |
+
+## Bulk operations
+
+For loading large datasets (initial setup, migrations), use our **bulk API** rather than looping individual creates:
+
+```bash
+POST /bulk/patients
+Content-Type: application/fhir+ndjson
+
+{"resourceType":"Patient","name":[{"family":"Smith"}],"birthDate":"1985-04-23"}
+{"resourceType":"Patient","name":[{"family":"Jones"}],"birthDate":"1990-11-07"}
+```
+
+Bulk endpoints accept up to **1,000 resources per request** and count as a single request against your rate limit.
+
+<Tip>
+  Enterprise plans can request a temporary rate limit increase for planned
+  migrations. Contact [support@bramblehealth.com](mailto:support@bramblehealth.com)
+  at least 48 hours in advance.
+</Tip>
